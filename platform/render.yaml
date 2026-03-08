@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: tp-platform-pilot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    autoDeploy: false
+    envVars:
+      - key: PLATFORM_ENV
+        value: prod
+      - key: PLATFORM_SECRET
+        generateValue: true
+      - key: PLATFORM_DATABASE_URL
+        sync: false
+      - key: PLATFORM_CORS_ORIGINS
+      - key: PLATFORM_ADMIN_DISPLAY_NAMES
+      - key: PLATFORM_MAX_PAGE_SIZE
+        value: "50"
+      - key: PLATFORM_DEFAULT_PAGE_SIZE
+        value: "20"
+      - key: PLATFORM_MAX_REQUEST_BYTES
+        value: "262144"
