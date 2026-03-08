@@ -12,8 +12,11 @@ class RegisterRequest(BaseModel):
     password: str
     email: Optional[str] = None
 class LoginRequest(BaseModel):
+    display_name: str
+    password: str
 class UserResponse(BaseModel):
     id: int
+    display_name: str
     email: Optional[str]
     fingerprint: str
     is_admin: bool
@@ -29,7 +32,11 @@ class IdeaUpdate(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     tags: Optional[List[str]] = None
+    merged_into_id: Optional[int] = None
 class IdeaResponse(BaseModel):
+    id: int
+    title: str
+    body: str
     tags: List[str]
     author: UserResponse
     merged_into_id: Optional[int]
@@ -38,10 +45,17 @@ class IdeaResponse(BaseModel):
     status_updated_by: Optional[int]
     signature: str
     score: int
+    created_at: dt.datetime
     updated_at: dt.datetime
     comment_count: int
 class CommentCreate(BaseModel):
+    body: str
 class CommentResponse(BaseModel):
+    id: int
+    body: str
+    author: UserResponse
+    signature: str
+    created_at: dt.datetime
 class VoteRequest(BaseModel):
     value: int
     @validator("value")
@@ -52,7 +66,12 @@ class VoteRequest(BaseModel):
 class MergeRequest(BaseModel):
     target_id: int
 class IdeaStatusUpdate(BaseModel):
+    status: IdeaStatus
 class TopIdeaSummary(BaseModel):
+    id: int
+    title: str
+    status: IdeaStatus
+    score: int
 class ReportSummaryResponse(BaseModel):
     generated_at: dt.datetime
     total_ideas: int
@@ -60,6 +79,7 @@ class ReportSummaryResponse(BaseModel):
     top_ideas: List[TopIdeaSummary]
     median_response_hours: Optional[float]
 class AuditEventResponse(BaseModel):
+    id: int
     event_type: str
     user_id: Optional[int]
     target_type: Optional[str]

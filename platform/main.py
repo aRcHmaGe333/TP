@@ -1,5 +1,6 @@
 from __future__ import annotations
 import csv
+import datetime as dt
 import io
 import json
 import statistics
@@ -10,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, func, select
+try:
     from . import auth, config
     from .database import get_session, init_db
     from .models import AuditEvent, Comment, Idea, MergeRecord, User, Vote
@@ -31,11 +33,31 @@ from sqlmodel import Session, func, select
         TopIdeaSummary,
         UserResponse,
         VoteRequest,
+    )
+except ImportError:
     import auth
+    import config
     from database import get_session, init_db
     from models import AuditEvent, Comment, Idea, MergeRecord, User, Vote
     from rate_limit import SlidingWindowRateLimiter
     from schemas import (
+        AuditEventResponse,
+        CommentCreate,
+        CommentResponse,
+        IdeaCreate,
+        IdeaResponse,
+        IdeaStatus,
+        IdeaStatusUpdate,
+        IdeaUpdate,
+        LoginRequest,
+        MergeRequest,
+        RegisterRequest,
+        ReportSummaryResponse,
+        TokenResponse,
+        TopIdeaSummary,
+        UserResponse,
+        VoteRequest,
+    )
 BASE_DIR = Path(__file__).resolve().parent
 STATUS_FLOW = [
     IdeaStatus.submitted.value,
@@ -54,6 +76,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
 rate_limiter = SlidingWindowRateLimiter()
 @app.middleware("http")
 async def request_size_guard(request: Request, call_next):
@@ -68,6 +91,7 @@ async def request_size_guard(request: Request, call_next):
                 return JSONResponse(
                     status_code=413,
                     content={"detail": "Request body exceeds PLATFORM_MAX_REQUEST_BYTES"},
+                )
     return await call_next(request)
 @app.on_event("startup")
 def on_startup() -> None:
@@ -103,6 +127,7 @@ def to_user_response(user: User) -> UserResponse:
         fingerprint=user.fingerprint,
         is_admin=user_is_admin(user),
         created_at=user.created_at,
+    )
 def to_comment_response(comment: Comment, author: User) -> CommentResponse:
     return CommentResponse(
         id=comment.id,
@@ -110,6 +135,7 @@ def to_comment_response(comment: Comment, author: User) -> CommentResponse:
         author=to_user_response(author),
         signature=comment.signature,
         created_at=comment.created_at,
+    )
 def resolve_limit(limit: Optional[int]) -> int:
     default_page = config.get_default_page_size()
     max_page = config.get_max_page_size()
@@ -133,12 +159,14 @@ def to_idea_response(idea: Idea, author: User, session: Session) -> IdeaResponse
     ).one()
     comment_count = session.exec(
         select(func.count()).select_from(Comment).where(Comment.idea_id == idea.id)
+    ).one()
     tags = [tag for tag in idea.tags.split(",") if tag]
     return IdeaResponse(
         id=idea.id,
         title=idea.title,
         body=idea.body,
         tags=tags,
+        author=to_user_response(author),
         merged_into_id=idea.merged_into_id,
         status=IdeaStatus(idea.status),
         status_updated_at=idea.status_updated_at,
@@ -148,6 +176,7 @@ def to_idea_response(idea: Idea, author: User, session: Session) -> IdeaResponse
         created_at=idea.created_at,
         updated_at=idea.updated_at,
         comment_count=comment_count,
+    )
 def sign_idea(idea: Idea, actor: User) -> str:
     payload = {
         "title": idea.title,
@@ -157,14 +186,18 @@ def sign_idea(idea: Idea, actor: User) -> str:
         "status": idea.status,
         "actor": actor.fingerprint,
         "ts": idea.updated_at.isoformat(),
+    }
     return auth.make_signature(payload, actor.signing_key)
 def sign_comment(comment: Comment, author: User) -> str:
+    payload = {
         "body": comment.body,
         "author": author.fingerprint,
         "ts": comment.created_at.isoformat(),
         "idea": comment.idea_id,
+    }
     return auth.make_signature(payload, author.signing_key)
 def parse_audit_details(details_json: str) -> Dict[str, object]:
+    try:
         parsed = json.loads(details_json)
         if isinstance(parsed, dict):
             return parsed
@@ -181,6 +214,7 @@ def to_audit_event_response(event: AuditEvent) -> AuditEventResponse:
         ip_address=event.ip_address,
         details=parse_audit_details(event.details_json),
         created_at=event.created_at,
+    )
 def record_audit_event(
     session: Session,
     request: Request,
@@ -199,11 +233,16 @@ def record_audit_event(
             target_id=target_id,
             ip_address=get_client_ip(request),
             details_json=json.dumps(details or {}, separators=(",", ":"), sort_keys=True),
+        )
+    )
+    session.commit()
 def validate_status_transition(current: str, new: str, is_admin: bool) -> None:
     if current == new:
+        return
     if current not in STATUS_FLOW or new not in STATUS_FLOW:
         raise HTTPException(status_code=400, detail="Invalid status value")
     if is_admin:
+        return
     current_idx = STATUS_FLOW.index(current)
     new_idx = STATUS_FLOW.index(new)
     if new_idx < current_idx:
@@ -223,13 +262,19 @@ def read_spec() -> Dict[str, str]:
 @app.post("/api/register", response_model=TokenResponse)
 def register(
     payload: RegisterRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ):
+    limits = config.get_rate_limits()
     client_ip = get_client_ip(request)
     enforce_rate_limit("register_ip", client_ip, limits.register_per_ip)
     existing = session.exec(select(User).where(User.display_name == payload.display_name)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Display name already taken")
+    if payload.email:
+        existing_email = session.exec(select(User).where(User.email == payload.email)).first()
+        if existing_email:
+            raise HTTPException(status_code=400, detail="Email already registered")
     salt_b64, hash_b64 = auth.hash_password(payload.password)
     signing_key = auth.build_signing_key()
     user = User(
@@ -240,6 +285,7 @@ def register(
         signing_key=signing_key,
         fingerprint=auth.fingerprint(signing_key),
         is_admin=payload.display_name.lower() in config.get_admin_display_names(),
+    )
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -251,11 +297,17 @@ def register(
         target_type="user",
         target_id=user.id,
         details={"display_name": user.display_name},
+    )
     token = auth.create_token(user.id)
     return TokenResponse(**to_user_response(user).dict(), token=token)
 @app.post("/api/login", response_model=TokenResponse)
 def login(
     payload: LoginRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    limits = config.get_rate_limits()
+    client_ip = get_client_ip(request)
     enforce_rate_limit("login_ip", client_ip, limits.login_per_ip)
     user = session.exec(select(User).where(User.display_name == payload.display_name)).first()
     if not user or not auth.verify_password(payload.password, user.password_salt, user.password_hash):
@@ -263,14 +315,30 @@ def login(
     if payload.display_name.lower() in config.get_admin_display_names() and not user.is_admin:
         user.is_admin = True
         session.add(user)
+        session.commit()
+        session.refresh(user)
+    record_audit_event(
+        session,
+        request,
         event_type="user_login",
+        user_id=user.id,
+        target_type="user",
+        target_id=user.id,
+    )
+    token = auth.create_token(user.id)
+    return TokenResponse(**to_user_response(user).dict(), token=token)
 @app.get("/api/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return to_user_response(current_user)
 @app.post("/api/ideas", response_model=IdeaResponse)
 def create_idea(
     payload: IdeaCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    limits = config.get_rate_limits()
+    client_ip = get_client_ip(request)
     enforce_rate_limit("idea_ip", client_ip, limits.idea_per_ip)
     enforce_rate_limit("idea_user", str(current_user.id), limits.idea_per_user)
     now = dt.datetime.utcnow()
@@ -286,20 +354,28 @@ def create_idea(
         created_at=now,
         updated_at=now,
         signature="",
+    )
     idea.signature = sign_idea(idea, current_user)
     session.add(idea)
+    session.commit()
     session.refresh(idea)
+    record_audit_event(
+        session,
+        request,
         event_type="idea_create",
         user_id=current_user.id,
         target_type="idea",
         target_id=idea.id,
         details={"status": idea.status},
+    )
     author = session.get(User, idea.author_id)
     return to_idea_response(idea, author, session)
 @app.get("/api/ideas", response_model=List[IdeaResponse])
 def list_ideas(
     limit: Optional[int] = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
+):
     page_size = resolve_limit(limit)
     ideas = session.exec(
         select(Idea).order_by(Idea.created_at.desc()).offset(offset).limit(page_size)
@@ -311,10 +387,19 @@ def get_idea(idea_id: int, session: Session = Depends(get_session)):
     idea = session.get(Idea, idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
+    author = session.get(User, idea.author_id)
+    return to_idea_response(idea, author, session)
 @app.put("/api/ideas/{idea_id}", response_model=IdeaResponse)
 def update_idea(
     idea_id: int,
     payload: IdeaUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    idea = session.get(Idea, idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
     if idea.author_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the author can edit")
     if payload.title is not None:
@@ -325,10 +410,31 @@ def update_idea(
         idea.tags = ",".join(tag.strip() for tag in payload.tags if tag.strip())
     idea.merged_into_id = payload.merged_into_id
     idea.updated_at = dt.datetime.utcnow()
+    idea.signature = sign_idea(idea, current_user)
+    session.add(idea)
+    session.commit()
+    session.refresh(idea)
+    record_audit_event(
+        session,
+        request,
         event_type="idea_update",
+        user_id=current_user.id,
+        target_type="idea",
+        target_id=idea.id,
+    )
+    author = session.get(User, idea.author_id)
+    return to_idea_response(idea, author, session)
 @app.patch("/api/ideas/{idea_id}/status", response_model=IdeaResponse)
 def update_idea_status(
+    idea_id: int,
     payload: IdeaStatusUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    idea = session.get(Idea, idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
     can_update = user_is_admin(current_user) or idea.author_id == current_user.id
     if not can_update:
         raise HTTPException(status_code=403, detail="Only author or admin can update status")
@@ -337,57 +443,131 @@ def update_idea_status(
     idea.status = payload.status.value
     idea.status_updated_at = dt.datetime.utcnow()
     idea.status_updated_by = current_user.id
+    idea.signature = sign_idea(idea, current_user)
+    session.add(idea)
+    session.commit()
+    session.refresh(idea)
+    record_audit_event(
+        session,
+        request,
         event_type="status_change",
+        user_id=current_user.id,
+        target_type="idea",
+        target_id=idea.id,
         details={"old_status": old_status, "new_status": payload.status.value},
+    )
+    author = session.get(User, idea.author_id)
+    return to_idea_response(idea, author, session)
 @app.post("/api/ideas/{idea_id}/merge", response_model=IdeaResponse)
 def merge_idea(
+    idea_id: int,
     payload: MergeRequest,
+    request: Request,
+    current_user: User = Depends(get_admin_user),
+    session: Session = Depends(get_session),
+):
+    idea = session.get(Idea, idea_id)
     target = session.get(Idea, payload.target_id)
     if not idea or not target:
+        raise HTTPException(status_code=404, detail="Idea not found")
     idea.merged_into_id = target.id
     merge_record = MergeRecord(source_id=idea.id, target_id=target.id, author_id=current_user.id)
     session.add_all([idea, merge_record])
+    session.commit()
+    session.refresh(idea)
+    record_audit_event(
+        session,
+        request,
         event_type="idea_merge",
+        user_id=current_user.id,
+        target_type="idea",
+        target_id=idea.id,
         details={"target_id": target.id},
+    )
+    author = session.get(User, idea.author_id)
+    return to_idea_response(idea, author, session)
 @app.post("/api/ideas/{idea_id}/vote")
 def vote(
+    idea_id: int,
     payload: VoteRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    limits = config.get_rate_limits()
+    client_ip = get_client_ip(request)
     enforce_rate_limit("vote_ip", client_ip, limits.vote_per_ip)
     enforce_rate_limit("vote_user", str(current_user.id), limits.vote_per_user)
     existing = session.exec(
         select(Vote).where(Vote.idea_id == idea_id, Vote.user_id == current_user.id)
     ).first()
+    if existing:
         existing.value = payload.value
         vote_obj = existing
     else:
         vote_obj = Vote(idea_id=idea_id, user_id=current_user.id, value=payload.value)
     session.add(vote_obj)
+    session.commit()
+    record_audit_event(
+        session,
+        request,
         event_type="idea_vote",
+        user_id=current_user.id,
+        target_type="idea",
         target_id=idea_id,
         details={"value": payload.value},
+    )
+    score = session.exec(
         select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.idea_id == idea_id)
+    ).one()
     return {"score": score}
 @app.post("/api/ideas/{idea_id}/comments", response_model=CommentResponse)
 def add_comment(
+    idea_id: int,
     payload: CommentCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    limits = config.get_rate_limits()
+    client_ip = get_client_ip(request)
     enforce_rate_limit("comment_ip", client_ip, limits.comment_per_ip)
     enforce_rate_limit("comment_user", str(current_user.id), limits.comment_per_user)
     comment = Comment(
         idea_id=idea_id,
+        body=payload.body,
+        author_id=current_user.id,
+    )
     comment.signature = sign_comment(comment, current_user)
     session.add(comment)
+    session.commit()
     session.refresh(comment)
+    record_audit_event(
+        session,
+        request,
         event_type="idea_comment",
+        user_id=current_user.id,
+        target_type="idea",
+        target_id=idea_id,
         details={"comment_id": comment.id},
+    )
     return to_comment_response(comment, current_user)
 @app.get("/api/ideas/{idea_id}/comments", response_model=List[CommentResponse])
 def list_comments(
+    idea_id: int,
+    limit: Optional[int] = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
+):
+    page_size = resolve_limit(limit)
     comments = session.exec(
         select(Comment)
         .where(Comment.idea_id == idea_id)
         .order_by(Comment.created_at)
         .offset(offset)
         .limit(page_size)
+    ).all()
+    users = {u.id: u for u in session.exec(select(User)).all()}
     return [to_comment_response(c, users[c.author_id]) for c in comments]
 @app.get("/api/reports/summary", response_model=ReportSummaryResponse)
 def report_summary(session: Session = Depends(get_session)) -> ReportSummaryResponse:
@@ -413,6 +593,7 @@ def report_summary(session: Session = Depends(get_session)) -> ReportSummaryResp
             title=idea.title,
             status=IdeaStatus(idea.status),
             score=score,
+        )
         for score, _, idea in scored_ideas[:5]
     ]
     median_response = None
@@ -424,13 +605,16 @@ def report_summary(session: Session = Depends(get_session)) -> ReportSummaryResp
         counts_by_status=counts,
         top_ideas=top,
         median_response_hours=median_response,
+    )
 @app.get("/api/reports/export.csv")
 def export_report_csv(
     _: User = Depends(get_admin_user),
+    session: Session = Depends(get_session),
 ) -> Response:
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(
+        [
             "row_type",
             "idea_id",
             "title",
@@ -443,9 +627,15 @@ def export_report_csv(
             "updated_at",
             "status_updated_at",
         ]
+    )
     ideas = session.exec(select(Idea).order_by(Idea.id)).all()
+    for idea in ideas:
+        score = session.exec(
+            select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.idea_id == idea.id)
+        ).one()
         comment_count = session.exec(
             select(func.count()).select_from(Comment).where(Comment.idea_id == idea.id)
+        ).one()
         writer.writerow(
             [
                 "idea",
@@ -460,18 +650,29 @@ def export_report_csv(
                 idea.updated_at.isoformat(),
                 idea.status_updated_at.isoformat() if idea.status_updated_at else "",
             ]
+        )
     writer.writerow([])
+    writer.writerow(
+        [
+            "row_type",
             "audit_id",
+            "idea_id",
             "old_status",
             "new_status",
             "changed_by",
             "ip_address",
+            "created_at",
+        ]
+    )
     events = session.exec(
         select(AuditEvent)
         .where(AuditEvent.event_type == "status_change")
         .order_by(AuditEvent.created_at)
+    ).all()
     for event in events:
         details = parse_audit_details(event.details_json)
+        writer.writerow(
+            [
                 "status_event",
                 event.id,
                 event.target_id,
@@ -480,16 +681,31 @@ def export_report_csv(
                 event.user_id,
                 event.ip_address or "",
                 event.created_at.isoformat(),
+            ]
+        )
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=platform-export.csv"},
+    )
 @app.get("/api/audit-events", response_model=List[AuditEventResponse])
 def list_audit_events(
+    limit: Optional[int] = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_admin_user),
+    session: Session = Depends(get_session),
 ) -> List[AuditEventResponse]:
+    page_size = resolve_limit(limit)
+    events = session.exec(
+        select(AuditEvent)
         .order_by(AuditEvent.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    ).all()
     return [to_audit_event_response(event) for event in events]
 @app.get("/segment_000.md")
 def serve_spec_file():
+    spec_path = BASE_DIR / "segment_000.md"
+    if not spec_path.exists():
         raise HTTPException(status_code=404, detail="Spec document missing")
     return FileResponse(spec_path)

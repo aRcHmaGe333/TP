@@ -35,6 +35,7 @@ def create_token(user_id: int, secret_key: str | None = None) -> str:
     return serializer.dumps({"uid": user_id})
 def load_token(token: str, secret_key: str | None = None) -> int | None:
     try:
+        serializer = get_serializer(secret_key)
         data = serializer.loads(token, max_age=config.get_session_max_age())
         return int(data.get("uid"))
     except (BadSignature, SignatureExpired, ValueError):

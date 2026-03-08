@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from typing import Set
 DEFAULT_SECRET = "dev-secret-change-me"
@@ -5,6 +6,7 @@ def _get_int(name: str, default: int, minimum: int = 1) -> int:
     raw = os.getenv(name)
     if raw is None:
         return default
+    try:
         value = int(raw)
     except ValueError as exc:
         raise RuntimeError(f"{name} must be an integer") from exc
@@ -33,6 +35,7 @@ def get_session_max_age() -> int:
 def get_database_url() -> str:
     value = os.getenv("PLATFORM_DATABASE_URL")
     if value:
+        return value
     if is_dev_env():
         return "sqlite:///./platform.db"
     return ""
@@ -62,14 +65,18 @@ def get_rate_limits() -> RateLimitConfig:
         vote_per_user=_get_int("PLATFORM_RATE_LIMIT_VOTE_PER_USER", 60),
         comment_per_ip=_get_int("PLATFORM_RATE_LIMIT_COMMENT_PER_IP", 60),
         comment_per_user=_get_int("PLATFORM_RATE_LIMIT_COMMENT_PER_USER", 40),
+    )
 def validate_runtime_config() -> None:
+    if is_dev_env():
         return
     secret = get_secret()
     if secret == DEFAULT_SECRET:
         raise RuntimeError("PLATFORM_SECRET must be set in non-dev environments")
     database_url = get_database_url()
+    if not database_url:
         raise RuntimeError("PLATFORM_DATABASE_URL must be set in non-dev environments")
     origins = get_cors_origins()
     if not origins or "*" in origins:
         raise RuntimeError(
             "PLATFORM_CORS_ORIGINS must be a comma-separated allowlist in non-dev environments"
+        )

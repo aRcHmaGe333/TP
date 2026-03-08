@@ -2,6 +2,10 @@ from functools import lru_cache
 from typing import Iterator
 from sqlalchemy import inspect, text
 from sqlmodel import Session, SQLModel, create_engine
+try:
+    from . import config
+except ImportError:
+    import config
 def _build_engine():
     database_url = config.get_database_url()
     if not database_url:
@@ -13,6 +17,7 @@ def get_engine():
     return _build_engine()
 @lru_cache
 def get_cached_engine():
+    return _build_engine()
 def init_db() -> None:
     engine = get_cached_engine()
     SQLModel.metadata.create_all(engine)

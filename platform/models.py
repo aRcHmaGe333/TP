@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import Optional
 from sqlmodel import Field, SQLModel
 class User(SQLModel, table=True):
@@ -11,6 +12,9 @@ class User(SQLModel, table=True):
     is_admin: bool = Field(default=False, index=True)
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.utcnow())
 class Idea(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    body: str
     tags: str = Field(default="")
     author_id: int = Field(foreign_key="user.id")
     merged_into_id: Optional[int] = Field(default=None, foreign_key="idea.id")
@@ -18,14 +22,27 @@ class Idea(SQLModel, table=True):
     status_updated_at: Optional[dt.datetime] = Field(default=None)
     status_updated_by: Optional[int] = Field(default=None, foreign_key="user.id")
     updated_at: dt.datetime = Field(default_factory=lambda: dt.datetime.utcnow())
+    signature: str = Field(default="")
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.utcnow())
 class Comment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
     idea_id: int = Field(foreign_key="idea.id")
+    body: str
+    author_id: int = Field(foreign_key="user.id")
+    signature: str = Field(default="")
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.utcnow())
 class Vote(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    idea_id: int = Field(foreign_key="idea.id")
     user_id: int = Field(foreign_key="user.id")
+    value: int
 class MergeRecord(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
     source_id: int = Field(foreign_key="idea.id")
     target_id: int = Field(foreign_key="idea.id")
+    author_id: int = Field(foreign_key="user.id")
 class AuditEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
     event_type: str = Field(index=True)
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     target_type: Optional[str] = Field(default=None, index=True)
