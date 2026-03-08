@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Innovative Feedback Platform</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__text">
+        <p class="eyebrow">Transparent innovation exchange</p>
+        <h1>Innovative Feedback Platform</h1>
+        <p class="lede">
+          Collect feedback, align demand, and sign every idea with verifiable
+          fingerprints. Merge, discuss, and prioritize the future together.
+        </p>
+        <div class="hero__cta">
+          <button id="cta-register" class="button button--primary">
+            Create identity
+          </button>
+          <button id="cta-login" class="button button--ghost">I have a token</button>
+        </div>
+        <p class="pill">Digital signatures • Transparent merges • Open discussion</p>
+      </div>
+      <div class="hero__card" id="identity-card"></div>
+    </header>
+    <main class="grid">
+      <section class="panel" id="panel-auth">
+        <div class="tab-bar">
+          <button class="tab active" data-tab="register">Register</button>
+          <button class="tab" data-tab="login">Login</button>
+        <form id="form-register" class="stack" data-tab-content="register">
+          <label class="field">
+            <span>Display name</span>
+            <input type="text" name="display_name" required />
+          </label>
+            <span>Email (optional)</span>
+            <input type="email" name="email" />
+            <span>Password</span>
+            <input type="password" name="password" required />
+          <button class="button button--primary" type="submit">Create identity</button>
+        </form>
+        <form id="form-login" class="stack hidden" data-tab-content="login">
+          <button class="button button--primary" type="submit">Login</button>
+        <p class="muted">Tokens stay client-side. Keep them safe.</p>
+      </section>
+      <section class="panel">
+        <div class="panel__header">
+          <h2>New submission</h2>
+          <p class="muted">Describe, tag, and optionally merge into an existing idea.</p>
+        <form id="form-idea" class="stack">
+            <span>Title</span>
+            <input type="text" name="title" required />
+            <span>Details</span>
+            <textarea name="body" rows="4" required></textarea>
+            <span>Tags (comma separated)</span>
+            <input type="text" name="tags" placeholder="sustainability, payments, accessibility" />
+            <span>Merge into (optional idea ID)</span>
+            <input type="number" name="merged_into_id" min="1" />
+          <button class="button button--primary" type="submit">Publish with signature</button>
+        <p class="muted" id="idea-status"></p>
+      <section class="panel" id="panel-spec">
+          <h2>Spec document</h2>
+          <p class="muted">Sourced from segment_000.md and served inside the platform.</p>
+        <pre id="spec-body" class="spec"></pre>
+      <section class="panel panel--wide" id="panel-ideas">
+          <div>
+            <h2>Live ideas</h2>
+            <p class="muted">Vote, merge, discuss, and verify signatures.</p>
+          </div>
+          <div class="filters">
+            <label class="chip">Sort by
+              <select id="sort-select">
+                <option value="score">Score</option>
+                <option value="recent">Most recent</option>
+              </select>
+            </label>
+        <div id="idea-list" class="idea-list"></div>
+    </main>
+    <template id="comment-template">
+      <div class="comment">
+        <div class="comment__meta"></div>
+        <p class="comment__body"></p>
+    </template>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
