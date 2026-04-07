@@ -64,7 +64,10 @@
             <span>Password</span>
             <input type="password" name="password" required />
           </label>
-          <input type="hidden" name="identity_verification_token" />
+          <label class="field">
+            <span>Identity Token (Optional in Dev, Required in Prod)</span>
+            <input type="text" name="identity_verification_token" placeholder="Paste verification token..." />
+          </label>
           <button class="button button--primary" type="submit">Verify and create account</button>
         </form>
         <form id="form-login" class="stack hidden" data-tab-content="login">
