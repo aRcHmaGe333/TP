@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Transparency Platform (TTP)</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__text">
+        <p class="eyebrow">Verified public transparency</p>
+        <h1>The Transparency Platform (TTP)</h1>
+        <p class="lede">
+          Collect verified ideas, align demand, and sign every submission with
+          traceable fingerprints. Bank ID or government ID verification comes first.
+        </p>
+        <div class="hero__cta">
+          <button id="cta-register" class="button button--primary">
+            Create identity
+          </button>
+          <button id="cta-login" class="button button--ghost">I have a token</button>
+        </div>
+        <p class="pill">Verified identity • Transparent merges • Open discussion</p>
+      </div>
+      <div class="hero__card" id="identity-card"></div>
+    </header>
+
+    <main class="grid">
+      <section class="panel" id="panel-auth">
+        <div class="tab-bar">
+          <button class="tab active" data-tab="register">Register</button>
+          <button class="tab" data-tab="login">Login</button>
+        </div>
+        <form id="form-register" class="stack" data-tab-content="register">
+          <label class="field">
+            <span>Identity provider</span>
+            <select name="provider">
+              <option value="bankid">Bank ID</option>
+              <option value="government_id">Government ID</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Legal name</span>
+            <input type="text" name="legal_name" required />
+          </label>
+          <label class="field">
+            <span>Person reference</span>
+            <input type="text" name="subject_id" required />
+          </label>
+          <label class="field">
+            <span>Display name</span>
+            <input type="text" name="display_name" required />
+          </label>
+          <label class="field">
+            <span>Email (optional)</span>
+            <input type="email" name="email" />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input type="password" name="password" required />
+          </label>
+          <input type="hidden" name="identity_verification_token" />
+          <button class="button button--primary" type="submit">Verify and create account</button>
+        </form>
+        <form id="form-login" class="stack hidden" data-tab-content="login">
+          <label class="field">
+            <span>Display name</span>
+            <input type="text" name="display_name" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input type="password" name="password" required />
+          </label>
+          <button class="button button--primary" type="submit">Login</button>
+        </form>
+        <p class="muted" id="auth-status">Bank ID or government ID verification is required before account creation.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2>New submission</h2>
+          <p class="muted">Describe, tag, and optionally merge into an existing idea.</p>
+        </div>
+        <form id="form-idea" class="stack">
+          <label class="field">
+            <span>Title</span>
+            <input type="text" name="title" required />
+          </label>
+          <label class="field">
+            <span>Details</span>
+            <textarea name="body" rows="4" required></textarea>
+          </label>
+          <label class="field">
+            <span>Tags (comma separated)</span>
+            <input type="text" name="tags" placeholder="sustainability, payments, accessibility" />
+          </label>
+          <label class="field">
+            <span>Merge into (optional idea ID)</span>
+            <input type="number" name="merged_into_id" min="1" />
+          </label>
+          <button class="button button--primary" type="submit">Publish with signature</button>
+        </form>
+        <p class="muted" id="idea-status"></p>
+      </section>
+
+      <section class="panel" id="panel-spec">
+        <div class="panel__header">
+          <h2>Spec document</h2>
+          <p class="muted">Sourced from segment_000.md and served inside The Transparency Platform.</p>
+        </div>
+        <pre id="spec-body" class="spec"></pre>
+      </section>
+
+      <section class="panel panel--wide" id="panel-ideas">
+        <div class="panel__header">
+          <div>
+            <h2>Live ideas</h2>
+            <p class="muted">Vote, merge, discuss, and verify signatures.</p>
+          </div>
+          <div class="filters">
+            <label class="chip">Sort by
+              <select id="sort-select">
+                <option value="score">Score</option>
+                <option value="recent">Most recent</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="idea-list" class="idea-list"></div>
+      </section>
+    </main>
+
+    <template id="comment-template">
+      <div class="comment">
+        <div class="comment__meta"></div>
+        <p class="comment__body"></p>
+      </div>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
